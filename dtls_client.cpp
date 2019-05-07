@@ -7,6 +7,12 @@ DTLS样例程序
 1. 推荐使用make命令编译;
 2. 也可使用g++命令手动编译dtls_client.cpp:
     g++ -g -I/usr/include/botan-2 dtls_client.cpp -lbotan-2
+
+调试方法:
+使用botan命令创建一个echo服务器, 监听本机UDP 4433端口, 默认协议DTLS 1.2:
+    botan tls_server server-cert.pem server-keyPkcs8.pem --port=4433 --type=udp
+对应的DTLS客户端也可以用botan命令调试:
+    botan tls_client localhost --port=4433 --print-certs --type=udp
 */
 
 #include <botan/tls_client.h>
