@@ -87,6 +87,9 @@ public:
     }
 };
 
+#include <cstdio>
+using std::printf;
+
 int main()
 {
     // prepare all the parameters
@@ -95,6 +98,14 @@ int main()
     Botan::TLS::Session_Manager_In_Memory session_mgr(rng);
     Client_Credentials creds;
     Botan::TLS::Strict_Policy policy;
+
+    const std::vector<uint16_t> acceptable_ciphersuite_list =
+        policy.ciphersuite_list(Botan::TLS::Protocol_Version::TLS_V12, false);
+    printf("Cipher suite list:\n");
+    for (uint16_t id : acceptable_ciphersuite_list)
+    {
+        printf("\t0x%04X: %s\n", (int)id, Botan::TLS::Ciphersuite::by_id(id).to_string().c_str());
+    }
 
     // open the tls connection
     Botan::TLS::Client client(callbacks, session_mgr, creds, policy, rng,
@@ -106,5 +117,9 @@ int main()
         // ...
 
         // send data to the tls server using client.send_data()
+        // ...
+
+        // close TLS channel when we have done everything
+        client.close();
     }
 }
