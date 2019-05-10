@@ -226,7 +226,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "SSL_CTX_load_verify_locations -> %d\n", ret);
     ret = SSL_CTX_set_default_verify_file(ctx);
     fprintf(stderr, "SSL_CTX_set_default_verify_file -> %d\n", ret);
-    //FIXME: liuqun 20190519 此处禁用双向证书验证//SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER|SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER|SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
 
     SSL_CTX_set_cookie_generate_cb(ctx, generate_cookie);
     SSL_CTX_set_cookie_verify_cb(ctx, verify_cookie);
