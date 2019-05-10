@@ -1,0 +1,12 @@
+# program files
+client
+server
+
+# PEM keys/certs file
+*.pem
+
+# CA serial number file
+*.srl
+
+# gcc output object file
+*.o
