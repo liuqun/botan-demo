@@ -18,13 +18,25 @@ DTLS样例程序
     make
 步骤2. 运行测试服务器程序:
     ./server 127.0.0.1:4433
-步骤3. 打开另一个终端控制台标签页, 回到客户端代码所在目录, 创建临时子目录cas存放CA证书, 复制server子目录中的根证书root-ca.pem到cas目录:
+步骤3. 打开另一个终端控制台, 回到客户端代码所在目录, 创建三个目录分别存放CA证书、客户端证书以及客户端私钥;
     cd ..
-    mkdir cas
-    cp server/root-ca.pem cas/
+    mkdir ca-certificates                           # 注: 创建自定义CA证书目录
+    cp server/root-ca.pem ca-certificates/          #     复制根证书文件root-ca.pem到自定义CA证书目录
+    mkdir client-certificates                       # 注: 创建自定义证书目录
+    cp server/client-cert.pem client-certificates/  #     复制证书文件client-cert.pem到自定义证书目录
+    mkdir client-private-keys                       # 注: 创建自定义私钥目录
+    cp server/client-key.pem client-private-keys/   #     复制私钥文件client-key.pem到自定义私钥目录
+目录结构如下图:
+├── ca-certificates
+│   └── root-ca.pem
+├── client-certificates
+│   └── client-cert.pem
+└── client-private-keys
+    └── client-key.pem
 步骤4. 编译并执行客户端程序dtls_client:
     make
     ./dtls_client
+TODO: 后续考虑将相对路径ca-certificates、client-certificates以及client-private-keys改为系统绝对路径...
 
 其他调试方法: 首先将步骤1生成的server-cert.pem证书和server-key.pem私钥复制到当前目录备用.
 使用botan命令创建一个echo服务器, 监听本机UDP 4433端口, 默认协议DTLS 1.2:
@@ -66,6 +78,10 @@ using Botan::Path_Validation_Restrictions;
 using Botan::Path_Validation_Result;
 #include <botan/hex.h>
 using Botan::hex_encode;
+#include <botan/pkcs8.h>
+using Botan::PKCS8::load_key;
+#include <botan/data_src.h>
+using Botan::DataSource_Stream;
 
 
 /**
@@ -257,18 +273,74 @@ private:
  * @brief Credentials storage for the DTLS client (or TLS client).
  *
  * It returns a list of trusted CA certificates from a local directory.
+ *
+ * @see Botan::Credentials_Manager 的使用手册 https://botan.randombit.net/manual/credentials_manager.html
  */
 class Client_Side_Credentials_Manager: public Botan::Credentials_Manager {// 备注: 父类 Botan::Credentials_Manager 定义于 botan-2.9.0/src/lib/tls/credentials_manager.h 头文件.
+public:
+    /**
+     * @brief 内部类 CredentialNode 用于存储 Client 侧私钥.
+     */
+    class CredentialNode {
+    public:
+        std::vector<Botan::X509_Certificate> certchain;
+    public:
+        std::shared_ptr<Botan::Private_Key> privkey;
+    };
+private:
+    std::vector<CredentialNode> m_creds;
+public:
+    /// 自定义接口函数: 重置客户端证书和私钥
+    void reset_client_credential_node(const CredentialNode& certchain_privkey_bundle_node)
+    {
+        m_creds.clear();
+        m_creds.push_back(certchain_privkey_bundle_node);
+    }
+public:
+    /// 回调函数: private_key_for()按数字证书查询并取出对应的客户端私钥
+    Botan::Private_Key* private_key_for(
+            const Botan::X509_Certificate& cert,
+            const std::string& type,
+            const std::string& context) override
+    {
+        // when returning a chain in cert_chain(), return the private key
+        // associated with the leaf certificate here
+        for (auto const& i : m_creds) {
+            if (i.certchain[0] == cert) {
+                return i.privkey.get();
+            }
+        }
+
+        return nullptr;
+    }
+
+private:
+    std::vector<Botan::Certificate_Store*> m_trusted_ca_list;
+private:
+    /// 私有成员函数, 从私有目录查找根证书文件并初始化证书链
+    void init_trusted_certificate_authorities(void)
+    {
+        // 此处假定:
+        // 1. 已将CA自签根证书文件放在当前路径的ca-certificates子目录内, 程序运行时读取目录内的证书文件.
+        // 2. 已将client-cert证书文件放在当前路径的client-certificates子目录内, 程序运行时读取目录内的证书文件.
+        // TODO: 后续考虑将相对路径改为系统绝对路径
+        m_trusted_ca_list.clear();
+        m_trusted_ca_list.push_back(new Botan::Certificate_Store_In_Memory("ca-certificates"));
+        m_trusted_ca_list.push_back(new Botan::Certificate_Store_In_Memory("client-certificates"));
+        // 由于我们只使用企业内部颁发的证书, 所以不需要去搜索Unix系统常用的公共互联网证书目录(例如"/etc/ssl/certs"和"/usr/share/ca-certificates")
+        // 如需与企业外其他主机通讯, 可以根据具体情况在上述两个文件夹中添加通信双方都认可的根证书及二级证书
+    }
 public:
     std::vector<Botan::Certificate_Store*> trusted_certificate_authorities(
             const std::string& type,
             const std::string& context) override
     {
         // return a list of certificates of CAs we trust for DTLS server certificates,
-        // e.g., all the certificates in the local directory "cas"
-        // 此处假定已将CA自签根证书文件放在当前路径的cas子目录内, 程序运行时读取目录内的证书文件.
-        // TODO: 使用推荐的目录存储根证书, 例如"/etc/ssl/certs"和"/usr/share/ca-certificates"或使用绝对路径自定义其他目录位置.
-        return {new Botan::Certificate_Store_In_Memory("cas")};
+        if (m_trusted_ca_list.size() > 0) {
+            return m_trusted_ca_list;
+        }
+        init_trusted_certificate_authorities();
+        return m_trusted_ca_list;
     }
 public:
     std::vector<Botan::X509_Certificate> cert_chain(
@@ -279,22 +351,35 @@ public:
         // when using DTLS client authentication (optional), return
         // a certificate chain being sent to the DTLS server,
         // else an empty list
-        return std::vector<Botan::X509_Certificate>(); // 注意: 如果返回空的链表 std::vector<X509_Certificate>() 则 DTLS/TLS 会话无法对客户端侧进行身份认证...
-        /* TODO: 添加客户端数字证书, 使客户端程序支持 DTLS/TLS 双向身份认证.
-         * (证书链 = RootCA公钥证书 + Client证书)
-         */
-    }
-public:
-    Botan::Private_Key* private_key_for(
-            const Botan::X509_Certificate& cert,
-            const std::string& type,
-            const std::string& context) override
-    {
-        // when returning a chain in cert_chain(), return the private key
-        // associated with the leaf certificate here
-        return nullptr;
-        /* TODO: 添加私钥, 使客户端程序支持 DTLS/TLS 双向身份认证.
-         */
+        if (m_creds.empty()) {
+            return std::vector<Botan::X509_Certificate>();
+            // 返回空的链表 std::vector<X509_Certificate>()时 DTLS/TLS 会话无法进行双向身份认证, 只能对服务器进行单向身份认证...
+        }
+
+        /* 客户端数字证书, 使客户端程序支持 DTLS/TLS 双向身份认证. */
+        if (type.compare("tls-client") == 0 && m_creds.size() > 0) {
+            // 客户端如果只有一个证书文件
+            if (m_creds.size() == 1) {
+                return m_creds[0].certchain;
+            }
+            // 客户端如果只有一个证书文件, 还要借助context文本匹配, 证书中附带的字段
+        }
+        return std::vector<Botan::X509_Certificate>();
+        // 以上为客户端证书链查找逻辑
+
+        // 以下为服务器端证书链查找逻辑: 服务器端的证书管理器通常是根据主机域名字段从多个证书中选择相匹配的一个服务器证书
+        // if (type.compare("tls-server") == 0) {
+        //     const std::string& hostname = context;
+        //     for(auto const& node : m_creds) {
+        //         if(std::find(cert_key_types.begin(), cert_key_types.end(), node.privkey->algo_name()) == cert_key_types.end()) {
+        //             continue;
+        //         }
+        //         if(hostname != "" && !node.certchain[0].matches_dns_name(hostname)) {
+        //             continue;
+        //         }
+        //         return node.certchain;
+        //     }
+        // }
     }
 };
 
@@ -371,6 +456,34 @@ int main()
 
     Client_Side_Credentials_Manager creds;// 客户端证书管理者, 其中回调函数 cert_chain()提供客户端自身证书链; 回调函数 private_key_for()提供客户端自身私钥key值;
     Client_Side_Implemented_Callbacks client_callback_handler;// 客户端自定义的回调函数, 其中: 回调函数 tls_emit_data()负责向UDP套接字发送密文数据, 回调函数 tls_alert() 处理DTLS会话中捕获的Alert异常...
+    Client_Side_Credentials_Manager::CredentialNode node;
+    bool all_client_pem_files_exist = false;
+    /* TODO: 检查客户端证书及私钥文件是否存在。如不存在则不加载客户端证书然后DTLS过程只进行单向身份认证。*/
+    if (1) {
+        all_client_pem_files_exist = true;
+    }
+    if (all_client_pem_files_exist) {
+        // 此处共用主程序中的随机数发生器 Botan::RandomNumberGenerator& rng;
+
+        Botan::DataSource_Stream keyfile("client-private-keys/client-key.pem");// FIXME: 需要处理文件不存在的异常情况
+        std::string passphrase = "";
+
+        try {
+            Botan::Private_Key *keyobj;
+            keyobj = Botan::PKCS8::load_key(keyfile, rng, passphrase);
+            node.privkey.reset(keyobj);
+        } catch (std::exception& e1) {
+        }
+
+        Botan::DataSource_Stream certfile("client-certificates/client-cert.pem");// FIXME: 需要处理文件不存在的异常情况
+        while(!certfile.end_of_data()) {
+            try {
+                node.certchain.push_back(Botan::X509_Certificate(certfile));
+            } catch (std::exception& e2) {
+            }
+        }
+    }
+    creds.reset_client_credential_node(node);
 
     client_callback_handler.register_udp_stuffs(// 将UDP套接字相关信息提供给 client_callback_handler
             sockfd, udp_sock_flags, server_sockaddr, server_sockaddr_size);
