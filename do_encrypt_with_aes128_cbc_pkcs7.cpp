@@ -17,8 +17,8 @@ int main()
         );
     const std::vector<uint8_t> key = Botan::hex_decode("2B7E151628AED2A6ABF7158809CF4F3C");
 
-    std::unique_ptr<Botan::Cipher_Mode> enc =
-        Botan::Cipher_Mode::create("AES-128/CBC/PKCS7", Botan::ENCRYPTION);
+    Botan::Cipher_Mode *enc =
+        Botan::get_cipher_mode("AES-128/CBC/PKCS7", Botan::ENCRYPTION);
     enc->set_key(key);
 
     // Generate fresh nonce (IV)
