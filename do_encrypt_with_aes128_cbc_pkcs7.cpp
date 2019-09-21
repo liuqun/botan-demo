@@ -35,6 +35,6 @@ int main()
     printf("Cipher name and mode: %s\n", enc->name().c_str());
     printf("Random key: %s\n", Botan::hex_encode(key).c_str());
     printf("Random IV: %s\n", Botan::hex_encode(iv).c_str());
-    printf("Encrypted data (in hex format): %s\n", Botan::hex_encode(pt));
+    printf("Encrypted data (in hex format): %s\n", Botan::hex_encode(pt).c_str());
     return 0;
 }
