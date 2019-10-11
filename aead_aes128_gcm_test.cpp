@@ -1,6 +1,6 @@
 // 文件名: aead_aes128_gcm_test.cpp
 // 编译命令:
-//     g++ `pkg-config --cflags botan-2` aead_*_test.cpp `pkg-config --libs botan-2`
+//     g++ `pkg-config --cflags botan-2` aead_aes128_gcm_test.cpp `pkg-config --libs botan-2`
 //
 // 代码节选自 Botan-handbook, 有修改
 // 原文网址 https://botan.randombit.net/handbook/api_ref/cipher_modes.html#aead-mode
