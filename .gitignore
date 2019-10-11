@@ -1,0 +1,8 @@
+a.out
+*.[oa]
+*.zip
+*.rar
+*.tar.gz
+*.bak
+~*
+*~
