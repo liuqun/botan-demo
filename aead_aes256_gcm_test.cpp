@@ -22,6 +22,7 @@
 
 
 
+#include <botan/version.h>
 #include <botan/rng.h>
 #include <botan/auto_rng.h>
 #include <botan/cipher_mode.h>
@@ -86,13 +87,20 @@ void run_test_AEAD_AES256_GCM(void)
     memcpy(plaintext, gcm_plaintext, plaintext_len);
 
     const char aead_cipher_name[] = "AES-256/GCM"; //"SM4/GCM"
-#if BOTAN_VERSION_MAJOR >= 2 && BOTAN_VERSION_MINOR >= 6
-    std::unique_ptr<Botan::AEAD_Mode> aead =
-        Botan::AEAD_Mode::create(aead_cipher_name, Botan::ENCRYPTION);
-#else
-    Botan::AEAD_Mode *aead =
-        Botan::get_aead(aead_cipher_name, Botan::ENCRYPTION);
+    Botan::AEAD_Mode *p_aead_obj = nullptr;
+#if BOTAN_VERSION_CODE >= BOTAN_VERSION_CODE_FOR(2,6,0)
+    using Botan::AEAD_Mode::create;
+    p_aead_obj = create(aead_cipher_name, Botan::ENCRYPTION);
+#elif BOTAN_VERSION_CODE >= BOTAN_VERSION_CODE_FOR(2,0,0)
+    // Tested against botan-2.4.0 in Ubuntu 18.04.x
+    //     sudo apt-get install libbotan-2-4 libbotan-2-dev
+    using Botan::get_aead;
+    p_aead_obj = get_aead(aead_cipher_name, Botan::ENCRYPTION);
 #endif
+    if (!p_aead_obj) {
+        throw std::runtime_error("Failed to create AEAD object!\n");
+    }
+    std::unique_ptr<Botan::AEAD_Mode> aead(p_aead_obj);
 
     std::vector<uint8_t> key = /* FIPS(美国)联邦信息处理标准AES-256-GCM测试用例 */
         Botan::hex_decode("eebc1f57487f51921c0465665f8ae6d1658bb26de6f8a069a3520293a572078f");
